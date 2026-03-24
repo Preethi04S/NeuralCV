@@ -4,10 +4,9 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 async function extractFromPDF(buffer: Buffer): Promise<string> {
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
-  return result.text;
+  const { extractText } = await import("unpdf");
+  const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
+  return text;
 }
 
 async function extractFromDOCX(buffer: Buffer): Promise<string> {
