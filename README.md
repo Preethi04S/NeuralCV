@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NeuralCV — AI Resume Intelligence
 
-## Getting Started
+> Paste your resume and a job description. Get your ATS score, skills gaps, missing keywords, and rewrite suggestions in seconds.
 
-First, run the development server:
+**Live Demo:** https://neuralcv.vercel.app
+**npm CLI:** `npm install -g neuralcv`
+**Built for:** LovHack Season 2
+
+---
+
+## What It Does
+
+NeuralCV analyzes your resume against any job description and returns:
+
+| Output | Description |
+|--------|-------------|
+| **ATS Score** | 0–100 compatibility score |
+| **Skills Match %** | Percentage alignment with role requirements |
+| **Missing Keywords** | Top 5 terms the ATS is looking for |
+| **Strengths** | What your resume already does well |
+| **Weaknesses** | Critical gaps for this specific role |
+| **Rewrite Suggestions** | Before/after rewrites with reasoning |
+
+---
+
+## Web App
+
+**Stack:** Next.js 16 · TypeScript · Tailwind CSS v4 · Framer Motion · OpenAI GPT-4o-mini
+
+### Run locally
 
 ```bash
+git clone https://github.com/yourusername/neuralcv
+cd neuralcv-web
+npm install
+cp .env.example .env.local
+# Add your OPENAI_API_KEY to .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## CLI
 
-## Learn More
+```bash
+npm install -g neuralcv
+neuralcv analyze
+```
 
-To learn more about Next.js, take a look at the following resources:
+Follow the prompts to paste your resume and job description. Results appear in your terminal with color-coded output.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Run without installing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx neuralcv analyze
+```
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Environment Variables
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI API key |
+| `OPENAI_BASE_URL` | No | Override to use Featherless AI or other OpenAI-compatible API |
+
+---
+
+## Deployment
+
+Deploy to Vercel in one click:
+
+1. Push to GitHub
+2. Import repo in Vercel
+3. Add `OPENAI_API_KEY` environment variable
+4. Deploy
+
+---
+
+## License
+
+MIT
