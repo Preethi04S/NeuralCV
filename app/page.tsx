@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Terminal, GitBranch, ArrowDown } from "lucide-react";
+import { Sparkles, Terminal, GitBranch } from "lucide-react";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
 import { AgentPipeline } from "@/components/AgentPipeline";
 import { FileUploadZone } from "@/components/FileUploadZone";
@@ -197,16 +197,16 @@ export default function Home() {
           {result && !loading && (
             <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <ArrowDown size={16} className="text-purple-400" />
-                  <h2 className="text-sm font-medium text-white/60 uppercase tracking-widest">Pipeline Complete</h2>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Resume Intelligence Dashboard</h2>
+                  <p className="text-xs text-white/40 mt-0.5">Powered by 4-agent AI pipeline</p>
                 </div>
                 <button onClick={reset} className="text-sm text-white/40 hover:text-white/70 transition-colors px-3 py-1.5 rounded-lg"
                   style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
-                  Analyze Another
+                  ← Analyze Another
                 </button>
               </div>
-              <ResultsDashboard result={result} liveJobsData={liveJobsData} jobsLoading={jobsLoading} skillCourses={skillCourses} coursesLoading={coursesLoading} />
+              <ResultsDashboard result={result} skillCourses={skillCourses ?? []} coursesLoading={coursesLoading ?? false} />
             </motion.div>
           )}
         </AnimatePresence>
