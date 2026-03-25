@@ -143,7 +143,7 @@ Return ONLY this JSON (no markdown):
     {
       "title": "<exact course or resource name>",
       "platform": "<platform name>",
-      "url": "<real URL — must be a real, working URL>",
+      "url": "<real URL - must be a real, working URL>",
       "cost": "<Free | Free tier | Paid>",
       "duration": "<e.g. '4 hours' or 'Self-paced'>",
       "type": "<video | interactive | documentation | project>",

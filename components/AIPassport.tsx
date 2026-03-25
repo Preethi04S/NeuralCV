@@ -69,7 +69,7 @@ export function AIPassport({ passport, overallConfidence, analysisTimestamp }: P
       </motion.div>
 
       <p className="text-xs text-white/30 px-1">
-        Every AI agent that analyzed your resume is documented here — which model was used, what it analyzed, and how confident it was. You can download this as proof of AI transparency.
+        Every AI agent that analyzed your resume is documented here: which model was used, what it analyzed, and how confident it was. You can download this as proof of AI transparency.
       </p>
 
       {/* Agent cards */}

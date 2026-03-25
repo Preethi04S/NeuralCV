@@ -246,7 +246,7 @@ export function ResultsDashboard({ result, skillCourses = [], coursesLoading = f
                       {result.skillsMatchPercent}<span className="text-2xl font-normal text-white/30">%</span>
                     </p>
                     <p className="text-xs text-white/30 mt-1">
-                      {result.skillsMatchPercent >= 70 ? "Strong alignment" : result.skillsMatchPercent >= 45 ? "Partial — gaps exist" : "Major gaps present"}
+                      {result.skillsMatchPercent >= 70 ? "Strong alignment" : result.skillsMatchPercent >= 45 ? "Partial - gaps exist" : "Major gaps present"}
                     </p>
                   </div>
 

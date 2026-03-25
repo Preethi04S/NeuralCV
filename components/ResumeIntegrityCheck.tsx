@@ -60,7 +60,7 @@ export function ResumeIntegrityCheck({ integrity }: Props) {
           {(integrity.flags?.length ?? 0) === 0 && (
             <div className="flex items-center gap-2 text-xs text-green-400">
               <ShieldCheck size={14} />
-              No integrity concerns detected — resume appears authentic
+              No integrity concerns detected. Resume appears authentic.
             </div>
           )}
         </div>

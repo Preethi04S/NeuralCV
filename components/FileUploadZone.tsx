@@ -156,7 +156,7 @@ export function FileUploadZone({ label, value, onChange, placeholder, accept = "
                   <p className="text-sm font-medium text-white/60">
                     {uploadState === "uploading" ? "Extracting text..." : isDragOver ? "Drop file here" : "Drop file or click to browse"}
                   </p>
-                  <p className="text-xs text-white/30 mt-1">PDF, DOCX, or TXT — max 5MB</p>
+                  <p className="text-xs text-white/30 mt-1">PDF, DOCX, or TXT - max 5MB</p>
                 </div>
                 {uploadState === "error" && errorMsg && (
                   <div className="flex items-center gap-2 text-xs text-red-400 text-center">

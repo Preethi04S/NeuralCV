@@ -158,8 +158,8 @@ export function CareerChatbot({ context }: Props) {
                     <div className="flex-1 px-3 py-2.5 rounded-2xl rounded-tl-sm text-sm text-white/75 leading-relaxed"
                       style={{ background: "rgba(255,255,255,0.05)" }}>
                       {hasContext
-                        ? `Hi! I've reviewed your resume analysis — you scored ${context?.atsScore}/100 for ${context?.targetRole || "your target role"}. I can see your key gaps and strengths. What would you like help with?`
-                        : "Hi! I'm CareerAI — your personal career advisor. Ask me anything about resumes, interviews, salary negotiation, or career transitions."}
+                        ? `Hi! I've reviewed your resume analysis. You scored ${context?.atsScore}/100 for ${context?.targetRole || "your target role"}. I can see your key gaps and strengths. What would you like help with?`
+                        : "Hi! I'm CareerAI, your personal career advisor. Ask me anything about resumes, interviews, salary negotiation, or career transitions."}
                     </div>
                   </div>
 

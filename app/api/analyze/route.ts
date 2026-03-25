@@ -104,7 +104,7 @@ const AGENT3_PROMPT = `You are an expert ATS scoring engine and career analyst.
 Given structured resume data and job description data, perform deep gap analysis.
 Return ONLY this JSON:
 {
-  "atsScore": <integer 0-100, realistic ATS score — most resumes score 35-75>,
+  "atsScore": <integer 0-100, realistic ATS score - most resumes score 35-75>,
   "grade": <"A" if 85+, "B" if 70-84, "C" if 50-69, "D" if 35-49, "F" if below 35>,
   "verdict": "<one punchy, specific sentence verdict about this resume for this specific role>",
   "skillsMatchPercent": <integer 0-100>,
@@ -184,7 +184,7 @@ Return ONLY this JSON:
   ],
   "confidence": <integer 0-100>
 }
-Be realistic — adding a single keyword typically adds 3-18 points depending on how critical it is.`;
+Be realistic - adding a single keyword typically adds 3-18 points depending on how critical it is.`;
 
 // ──── Agent 6: JD Bias Scanner (USP #225) ─────────────────────
 interface JDBiasData {
@@ -245,7 +245,7 @@ Return ONLY this JSON:
   ],
   "confidence": <integer 0-100>
 }
-Most genuine resumes score 70-95. Only flag actual concerns — do not invent flags. If resume looks authentic, return empty flags array and high score.`;
+Most genuine resumes score 70-95. Only flag actual concerns - do not invent flags. If resume looks authentic, return empty flags array and high score.`;
 
 export async function POST(request: NextRequest) {
   const agentLogs: string[] = [];
@@ -301,7 +301,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     agentLogs.push(`Agent 3 complete: ATS Score ${gapData.atsScore}/100, Grade ${gapData.grade}, Confidence ${gapData.confidence}%`);
-    agentLogs.push(`Agent 6 complete: JD Bias Rating — ${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues found`);
+    agentLogs.push(`Agent 6 complete: JD Bias Rating - ${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues found`);
     agentLogs.push(`Agent 7 complete: Resume Integrity Score ${integrityData.integrityScore}/100`);
 
     // ── Agent 4 ──
@@ -333,14 +333,14 @@ export async function POST(request: NextRequest) {
       { agentId: 4, name: "Career Coach", model: SMART_MODEL, role: "Generates rewrites, interview prep, action plan", confidence: coachData.confidence ?? 85, tokensUsed: "~2000", outputSummary: `${coachData.rewriteSuggestions?.length ?? 0} rewrites, ${coachData.interviewQuestions?.length ?? 0} interview questions, 7-day plan` },
       { agentId: 5, name: "Counterfactual Simulator", model: FAST_MODEL, role: "Computes projected score improvements per skill", confidence: counterfactualData.confidence ?? 82, tokensUsed: "~500", outputSummary: `${counterfactualData.scenarios?.length ?? 0} what-if scenarios, top gain: +${Math.max(...(counterfactualData.scenarios?.map(s => s.pointsGain) ?? [0]))} pts` },
       { agentId: 6, name: "JD Bias Scanner", model: FAST_MODEL, role: "Detects biased language in job description", confidence: jdBiasData.confidence ?? 90, tokensUsed: "~400", outputSummary: `Bias rating: ${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues found` },
-      { agentId: 7, name: "Integrity Checker", model: FAST_MODEL, role: "Verifies resume authenticity and credibility", confidence: integrityData.confidence ?? 87, tokensUsed: "~600", outputSummary: `Integrity score: ${integrityData.integrityScore}/100 — ${integrityData.verdict}` },
+      { agentId: 7, name: "Integrity Checker", model: FAST_MODEL, role: "Verifies resume authenticity and credibility", confidence: integrityData.confidence ?? 87, tokensUsed: "~600", outputSummary: `Integrity score: ${integrityData.integrityScore}/100 - ${integrityData.verdict}` },
     ];
 
     // ── Overall confidence ──
     const allConfidences = [gapData.confidence, coachData.confidence, counterfactualData.confidence, jdBiasData.confidence, integrityData.confidence].filter(Boolean) as number[];
     const overallConfidence = Math.round(allConfidences.reduce((a, b) => a + b, 0) / allConfidences.length);
 
-    agentLogs.push(`Pipeline complete in ${((elapsedMs) / 1000).toFixed(1)}s — Overall confidence: ${overallConfidence}%`);
+    agentLogs.push(`Pipeline complete in ${((elapsedMs) / 1000).toFixed(1)}s - Overall confidence: ${overallConfidence}%`);
 
     const result = {
       atsScore: gapData.atsScore,
