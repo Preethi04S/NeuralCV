@@ -95,10 +95,10 @@ export function ResultsDashboard({ result, skillCourses = [], coursesLoading = f
   ];
 
   return (
-    <div className="flex gap-5 w-full min-h-[600px]">
+    <div className="flex gap-6 w-full min-h-[600px]">
 
       {/* ── LEFT SIDEBAR ── */}
-      <div className="w-48 shrink-0 flex flex-col gap-1 py-1">
+      <div className="w-52 shrink-0 flex flex-col gap-1 py-1">
         <p className="text-xs font-medium text-white/25 uppercase tracking-widest px-3 mb-2">Navigation</p>
         {NAV.map(({ key, label, icon: Icon }) => {
           const active = tab === key;

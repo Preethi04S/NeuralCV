@@ -131,9 +131,14 @@ export default function Home() {
           style={{ background: "radial-gradient(ellipse, #a855f7 0%, transparent 70%)", filter: "blur(60px)" }} />
       </div>
 
-      <div className="relative z-10 max-w-5xl mx-auto px-4 py-12">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="text-center mb-12">
+      <div className={`relative z-10 mx-auto px-6 py-12 transition-all duration-500 ${result && !loading ? "max-w-screen-xl" : "max-w-5xl"}`}>
+        {/* Header — hidden when dashboard is active */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: result && !loading ? 0 : 1, height: result && !loading ? 0 : "auto", marginBottom: result && !loading ? 0 : undefined, overflow: "hidden" }}
+          transition={{ duration: 0.4 }}
+          className="text-center mb-12"
+        >
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 text-xs font-medium text-purple-300"
             style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.25)" }}>
