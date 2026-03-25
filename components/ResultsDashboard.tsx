@@ -1,6 +1,6 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, XCircle, Lightbulb, ArrowRight, Copy, Check, BarChart2, MessageSquare, Zap, Target, TrendingUp, Shield, ShieldCheck } from "lucide-react";
+import { CheckCircle, XCircle, Lightbulb, ArrowRight, Copy, Check, BarChart2, MessageSquare, Zap, Target, TrendingUp, Shield, ShieldCheck, Briefcase, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ScoreGauge } from "./ScoreGauge";
 import { InterviewPrep } from "./InterviewPrep";
@@ -10,10 +10,14 @@ import { CounterfactualSimulator } from "./CounterfactualSimulator";
 import { JDBiasScanner } from "./JDBiasScanner";
 import { ResumeIntegrityCheck } from "./ResumeIntegrityCheck";
 import { AIPassport } from "./AIPassport";
-import type { AnalysisResult } from "@/types/analysis";
+import { LiveJobs } from "./LiveJobs";
+import { MarketInsights } from "./MarketInsights";
+import type { AnalysisResult, LiveJobsData } from "@/types/analysis";
 
 interface Props {
   result: AnalysisResult;
+  liveJobsData?: LiveJobsData | null;
+  jobsLoading?: boolean;
 }
 
 const stagger = {
@@ -31,7 +35,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-type Tab = "analysis" | "interview" | "action" | "whatif" | "bias" | "integrity" | "passport";
+type Tab = "analysis" | "interview" | "action" | "whatif" | "bias" | "integrity" | "passport" | "jobs";
 
 const TABS = [
   { key: "analysis" as Tab, label: "Analysis", icon: BarChart2 },
@@ -41,9 +45,10 @@ const TABS = [
   { key: "bias" as Tab, label: "JD Bias", icon: Shield },
   { key: "integrity" as Tab, label: "Integrity", icon: ShieldCheck },
   { key: "passport" as Tab, label: "AI Passport", icon: Target },
+  { key: "jobs" as Tab, label: "Live Jobs", icon: Briefcase },
 ];
 
-export function ResultsDashboard({ result }: Props) {
+export function ResultsDashboard({ result, liveJobsData, jobsLoading }: Props) {
   const [tab, setTab] = useState<Tab>("analysis");
 
   const confidenceColor = (result.overallConfidence ?? 85) >= 85 ? "#22c55e" : (result.overallConfidence ?? 85) >= 70 ? "#f59e0b" : "#f97316";
@@ -228,6 +233,35 @@ export function ResultsDashboard({ result }: Props) {
               ? <AIPassport passport={result.agentPassport} overallConfidence={result.overallConfidence ?? 85} />
               : <p className="text-sm text-white/30 text-center py-8">Passport data unavailable</p>
             }
+          </motion.div>
+        )}
+
+        {tab === "jobs" && (
+          <motion.div key="jobs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22 }}>
+            <div className="mb-5">
+              <h3 className="text-sm font-semibold text-white/80 mb-1">Live Job Recommendations</h3>
+              <p className="text-xs text-white/35">Real-time job listings from Remotive, matched against your resume skills. Jobs sorted by fit score — highest match first.</p>
+            </div>
+            {jobsLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Loader2 size={28} className="text-purple-400 animate-spin" />
+                <p className="text-sm text-white/40">Searching live job boards for your profile...</p>
+                <p className="text-xs text-white/25">Scanning remote opportunities in real time</p>
+              </div>
+            ) : liveJobsData ? (
+              <>
+                <MarketInsights insights={liveJobsData.marketInsights} />
+                <LiveJobs
+                  targetRoleJobs={liveJobsData.targetRoleJobs}
+                  alternativeRoleJobs={liveJobsData.alternativeRoleJobs}
+                />
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <Briefcase size={32} className="mx-auto mb-3 text-white/15" />
+                <p className="text-sm text-white/30">Run the analysis to see live job recommendations.</p>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

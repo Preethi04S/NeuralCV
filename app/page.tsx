@@ -5,7 +5,7 @@ import { Sparkles, Terminal, GitBranch, ArrowDown } from "lucide-react";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
 import { AgentPipeline } from "@/components/AgentPipeline";
 import { FileUploadZone } from "@/components/FileUploadZone";
-import type { AnalysisResult } from "@/types/analysis";
+import type { AnalysisResult, LiveJobsData } from "@/types/analysis";
 
 const SAMPLE_RESUME = `John Smith
 john@email.com | github.com/jsmith | linkedin.com/in/jsmith
@@ -51,6 +51,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [liveJobsData, setLiveJobsData] = useState<LiveJobsData | null>(null);
+  const [jobsLoading, setJobsLoading] = useState(false);
 
   const handleAnalyze = useCallback(async () => {
     if (!resume.trim() || !jobDescription.trim()) {
@@ -70,6 +72,21 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analysis failed");
       setResult(data);
+      // Fetch live jobs in background (non-blocking)
+      setJobsLoading(true);
+      fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resumeSkills: data.resumeProfile?.topSkills ?? [],
+          targetRole: data.resumeProfile?.roles?.[0] ?? "",
+          alternativeRoles: (data.alternativeRoles ?? []).map((r: { title: string }) => r.title),
+        }),
+      })
+        .then(r => r.json())
+        .then(jobs => setLiveJobsData(jobs))
+        .catch(() => {})
+        .finally(() => setJobsLoading(false));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -83,7 +100,7 @@ export default function Home() {
   );
 
   const loadSample = () => { setResume(SAMPLE_RESUME); setJobDescription(SAMPLE_JD); setResult(null); setError(null); };
-  const reset = () => { setResume(""); setJobDescription(""); setResult(null); setError(null); };
+  const reset = () => { setResume(""); setJobDescription(""); setResult(null); setError(null); setLiveJobsData(null); setJobsLoading(false); };
 
   return (
     <main className="min-h-screen" onKeyDown={handleKeyDown}>
@@ -172,7 +189,7 @@ export default function Home() {
                   Analyze Another
                 </button>
               </div>
-              <ResultsDashboard result={result} />
+              <ResultsDashboard result={result} liveJobsData={liveJobsData} jobsLoading={jobsLoading} />
             </motion.div>
           )}
         </AnimatePresence>

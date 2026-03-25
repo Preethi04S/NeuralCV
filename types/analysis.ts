@@ -101,3 +101,37 @@ export interface AnalyzeRequest {
   resume: string;
   jobDescription: string;
 }
+
+export interface LiveJob {
+  id: number;
+  title: string;
+  company: string;
+  url: string;
+  salary: string;
+  tags: string[];
+  location: string;
+  postedDate: string;
+  jobType: string;
+  matchScore: number; // 0-100, computed from resume skills vs job tags
+  matchedSkills: string[]; // which skills matched
+  isNew: boolean; // posted within 7 days
+}
+
+export interface JobSearchResult {
+  query: string;
+  roleCategory: string;
+  jobs: LiveJob[];
+  totalFound: number;
+}
+
+export interface LiveJobsData {
+  targetRoleJobs: JobSearchResult;
+  alternativeRoleJobs: JobSearchResult[];
+  marketInsights: {
+    totalJobsFound: number;
+    topCompanies: string[];
+    salaryRanges: string[];
+    topSkillsInDemand: string[];
+    mostActiveCategory: string;
+  };
+}
