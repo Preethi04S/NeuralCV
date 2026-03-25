@@ -1,6 +1,6 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, XCircle, Lightbulb, ArrowRight, Copy, Check, BarChart2, MessageSquare, Zap, Target, TrendingUp, Shield, ShieldCheck, Briefcase, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, Lightbulb, ArrowRight, Copy, Check, BarChart2, MessageSquare, Zap, Target, TrendingUp, Shield, ShieldCheck, Briefcase, Loader2, GraduationCap } from "lucide-react";
 import { useState } from "react";
 import { ScoreGauge } from "./ScoreGauge";
 import { InterviewPrep } from "./InterviewPrep";
@@ -12,12 +12,15 @@ import { ResumeIntegrityCheck } from "./ResumeIntegrityCheck";
 import { AIPassport } from "./AIPassport";
 import { LiveJobs } from "./LiveJobs";
 import { MarketInsights } from "./MarketInsights";
-import type { AnalysisResult, LiveJobsData } from "@/types/analysis";
+import { CourseRecommendations } from "./CourseRecommendations";
+import type { AnalysisResult, LiveJobsData, SkillCourse } from "@/types/analysis";
 
 interface Props {
   result: AnalysisResult;
   liveJobsData?: LiveJobsData | null;
   jobsLoading?: boolean;
+  skillCourses?: SkillCourse[];
+  coursesLoading?: boolean;
 }
 
 const stagger = {
@@ -35,7 +38,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-type Tab = "analysis" | "interview" | "action" | "whatif" | "bias" | "integrity" | "passport" | "jobs";
+type Tab = "analysis" | "interview" | "action" | "whatif" | "bias" | "integrity" | "passport" | "jobs" | "courses";
 
 const TABS = [
   { key: "analysis" as Tab, label: "Analysis", icon: BarChart2 },
@@ -46,9 +49,10 @@ const TABS = [
   { key: "integrity" as Tab, label: "Integrity", icon: ShieldCheck },
   { key: "passport" as Tab, label: "AI Passport", icon: Target },
   { key: "jobs" as Tab, label: "Live Jobs", icon: Briefcase },
+  { key: "courses" as Tab, label: "Courses", icon: GraduationCap },
 ];
 
-export function ResultsDashboard({ result, liveJobsData, jobsLoading }: Props) {
+export function ResultsDashboard({ result, liveJobsData, jobsLoading, skillCourses, coursesLoading }: Props) {
   const [tab, setTab] = useState<Tab>("analysis");
 
   const confidenceColor = (result.overallConfidence ?? 85) >= 85 ? "#22c55e" : (result.overallConfidence ?? 85) >= 70 ? "#f59e0b" : "#f97316";
@@ -262,6 +266,15 @@ export function ResultsDashboard({ result, liveJobsData, jobsLoading }: Props) {
                 <p className="text-sm text-white/30">Run the analysis to see live job recommendations.</p>
               </div>
             )}
+          </motion.div>
+        )}
+        {tab === "courses" && (
+          <motion.div key="courses" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22 }}>
+            <div className="mb-5">
+              <h3 className="text-sm font-semibold text-white/80 mb-1">Skill Gap Learning Paths</h3>
+              <p className="text-xs text-white/35">Curated courses for every missing skill in your resume — free resources prioritised. Click any course to start learning.</p>
+            </div>
+            <CourseRecommendations skillCourses={skillCourses ?? []} loading={coursesLoading} />
           </motion.div>
         )}
       </AnimatePresence>

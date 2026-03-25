@@ -5,7 +5,8 @@ import { Sparkles, Terminal, GitBranch, ArrowDown } from "lucide-react";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
 import { AgentPipeline } from "@/components/AgentPipeline";
 import { FileUploadZone } from "@/components/FileUploadZone";
-import type { AnalysisResult, LiveJobsData } from "@/types/analysis";
+import { CareerChatbot } from "@/components/CareerChatbot";
+import type { AnalysisResult, LiveJobsData, SkillCourse } from "@/types/analysis";
 
 const SAMPLE_RESUME = `John Smith
 john@email.com | github.com/jsmith | linkedin.com/in/jsmith
@@ -53,6 +54,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [liveJobsData, setLiveJobsData] = useState<LiveJobsData | null>(null);
   const [jobsLoading, setJobsLoading] = useState(false);
+  const [skillCourses, setSkillCourses] = useState<SkillCourse[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(false);
 
   const handleAnalyze = useCallback(async () => {
     if (!resume.trim() || !jobDescription.trim()) {
@@ -87,6 +90,20 @@ export default function Home() {
         .then(jobs => setLiveJobsData(jobs))
         .catch(() => {})
         .finally(() => setJobsLoading(false));
+      // Fetch course recommendations in background
+      setCoursesLoading(true);
+      fetch("/api/courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          missingSkills: data.missingKeywords ?? [],
+          experienceLevel: data.resumeProfile?.experienceLevel ?? "mid",
+        }),
+      })
+        .then(r => r.json())
+        .then(c => setSkillCourses(c.skillCourses ?? []))
+        .catch(() => {})
+        .finally(() => setCoursesLoading(false));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -100,7 +117,7 @@ export default function Home() {
   );
 
   const loadSample = () => { setResume(SAMPLE_RESUME); setJobDescription(SAMPLE_JD); setResult(null); setError(null); };
-  const reset = () => { setResume(""); setJobDescription(""); setResult(null); setError(null); setLiveJobsData(null); setJobsLoading(false); };
+  const reset = () => { setResume(""); setJobDescription(""); setResult(null); setError(null); setLiveJobsData(null); setJobsLoading(false); setSkillCourses([]); setCoursesLoading(false); };
 
   return (
     <main className="min-h-screen" onKeyDown={handleKeyDown}>
@@ -189,10 +206,23 @@ export default function Home() {
                   Analyze Another
                 </button>
               </div>
-              <ResultsDashboard result={result} liveJobsData={liveJobsData} jobsLoading={jobsLoading} />
+              <ResultsDashboard result={result} liveJobsData={liveJobsData} jobsLoading={jobsLoading} skillCourses={skillCourses} coursesLoading={coursesLoading} />
             </motion.div>
           )}
         </AnimatePresence>
+
+        <CareerChatbot context={result ? {
+          atsScore: result.atsScore,
+          grade: result.grade,
+          targetRole: result.resumeProfile?.summary?.split(" ").slice(0, 3).join(" "),
+          name: result.resumeProfile?.name,
+          topSkills: result.resumeProfile?.topSkills,
+          missingKeywords: result.missingKeywords,
+          strengths: result.strengths,
+          weaknesses: result.weaknesses,
+          experienceLevel: result.resumeProfile?.experienceLevel,
+          experienceYears: result.resumeProfile?.experienceYears,
+        } : undefined} />
 
         {/* Footer */}
         <motion.footer initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}

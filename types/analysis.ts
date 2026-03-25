@@ -135,3 +135,18 @@ export interface LiveJobsData {
     mostActiveCategory: string;
   };
 }
+
+export interface CourseItem {
+  title: string;
+  platform: string;
+  url: string;
+  cost: string;
+  duration: string;
+  type: string;
+  description?: string;
+}
+
+export interface SkillCourse {
+  skill: string;
+  courses: CourseItem[];
+}
