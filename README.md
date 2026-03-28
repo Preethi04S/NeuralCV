@@ -353,7 +353,7 @@ No account required. No paywall. No uploads to third parties.
 
 <div align="center">
 
-## Built at APOGEE GameJam 2026 · BITS Pilani
+## Built at LovHack Season 2
 
 **Preethi S** — [github.com/Preethi04S](https://github.com/Preethi04S)
 
@@ -363,7 +363,7 @@ No account required. No paywall. No uploads to third parties.
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen?style=for-the-badge&logo=github)](https://github.com/Preethi04S/NeuralCV/pulls)
-[![Made with Love](https://img.shields.io/badge/Made_with-Love_%26_GPT--4o-ff69b4?style=for-the-badge)](https://github.com/Preethi04S/NeuralCV)
+[![LovHack Season 2](https://img.shields.io/badge/LovHack-Season_2-ff69b4?style=for-the-badge)](https://lovhack.devpost.com)
 
 <br/>
 
