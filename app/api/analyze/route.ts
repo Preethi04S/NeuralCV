@@ -12,6 +12,30 @@ const client = new OpenAI({
 const FAST_MODEL  = "llama-3.1-8b-instant";
 const SMART_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 
+// ── Sanitize input to remove characters that break JSON generation ─────────
+function sanitize(text: string): string {
+  return text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u2022\u25E6\u25AA\u25CF\u2023]/g, '-')
+    .replace(/[^\x00-\x7F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ── Extract JSON from model output robustly ───────────────────────────────
+function extractJSON<T>(raw: string): T {
+  const cleaned = raw
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+  try { return JSON.parse(cleaned) as T; } catch { /* continue */ }
+  const m = cleaned.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]) as T; } catch { /* continue */ } }
+  throw new Error("Could not parse JSON from response");
+}
+
 // ── Token-efficient agent runner ──────────────────────────────────────────
 async function runAgent<T>(
   agentName: string,
@@ -24,16 +48,14 @@ async function runAgent<T>(
     model,
     temperature: 0.1,
     max_tokens,
-    response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user",   content: userContent  },
+      { role: "system", content: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences, no explanation." },
+      { role: "user",   content: sanitize(userContent) },
     ],
   });
   const content = completion.choices[0]?.message?.content;
   if (!content) throw new Error(`${agentName} returned no content`);
-  try { return JSON.parse(content) as T; }
-  catch { throw new Error(`${agentName} returned invalid JSON`); }
+  return extractJSON<T>(content);
 }
 
 // ──────────────────────────────────────────────────────────────────────────

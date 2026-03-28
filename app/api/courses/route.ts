@@ -190,13 +190,14 @@ export async function POST(request: NextRequest) {
               const completion = await client.chat.completions.create({
                 model: "llama-3.1-8b-instant",
                 temperature: 0.1,
-                response_format: { type: "json_object" },
                 messages: [
-                  { role: "system", content: AI_COURSE_PROMPT },
+                  { role: "system", content: AI_COURSE_PROMPT + "\n\nRespond with valid JSON only. No markdown or code fences." },
                   { role: "user", content: `Skill to learn: ${skill}\nCandidate level: ${experienceLevel}` },
                 ],
               });
-              const data = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
+              const raw = completion.choices[0]?.message?.content ?? "{}";
+              const cleaned = raw.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
+              const data = JSON.parse(cleaned.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
               return { skill, courses: data.courses ?? [] };
             } catch {
               return { skill, courses: [] };

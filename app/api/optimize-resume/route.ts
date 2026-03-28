@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
   try {
     const { resumeData, jobDescription, missingKeywords, atsScore } = await request.json();
 
-    const jdSnippet = (jobDescription || "").slice(0, 1500);
+    const sanitize = (t: string) => t.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/[\u2013\u2014]/g,'-').replace(/[\u2022\u25E6\u25AA\u25CF\u2023]/g,'-').replace(/[^\x00-\x7F]/g,' ').replace(/\s+/g,' ').trim();
+    const jdSnippet = sanitize((jobDescription || "").slice(0, 1500));
     const missing = (missingKeywords || []).slice(0, 8).join(", ");
 
     const bulletList = (resumeData.experience || [])
