@@ -57,7 +57,7 @@ Use this context to give personalized advice when relevant.`;
     const systemContent = SYSTEM_PROMPT + contextMessage;
 
     const completion = await client.chat.completions.create({
-      model: "meta-llama/Llama-3.3-70B-Instruct",
+      model: "llama-3.3-70b-versatile",
       temperature: 0.7,
       max_tokens: 500,
       messages: [

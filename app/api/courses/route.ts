@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
           aiSkills.map(async (skill) => {
             try {
               const completion = await client.chat.completions.create({
-                model: "meta-llama/Llama-3.1-8B-Instruct",
+                model: "llama-3.1-8b-instant",
                 temperature: 0.1,
                 response_format: { type: "json_object" },
                 messages: [

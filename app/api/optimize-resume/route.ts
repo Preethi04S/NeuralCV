@@ -9,7 +9,7 @@ const client = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || undefined,
 });
 
-const SMART_MODEL = process.env.AI_MODEL || "meta-llama/Llama-3.3-70B-Instruct";
+const SMART_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 
 function extractJSON(raw: string): unknown {
   const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();

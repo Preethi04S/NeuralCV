@@ -48,7 +48,7 @@ INSTRUCTIONS:
 - Output ONLY the cover letter text, no preamble or notes`;
 
     const completion = await client.chat.completions.create({
-      model: "meta-llama/Llama-3.3-70B-Instruct",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
       max_tokens: 700,
@@ -64,7 +64,7 @@ Role: ${targetRole || "the position"}
 Company: ${company || "the company"}`;
 
     const subjectCompletion = await client.chat.completions.create({
-      model: "meta-llama/Llama-3.1-8B-Instruct",
+      model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: subjectPrompt }],
       temperature: 0.8,
       max_tokens: 150,
