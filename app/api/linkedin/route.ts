@@ -43,7 +43,7 @@ Return this exact JSON structure with real values filled in:
 Now generate the SAME JSON structure but customised for the candidate above. Keep all field names identical. Output raw JSON only.`;
 
     const completion = await client.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
       messages: [
         {
           role: "system",

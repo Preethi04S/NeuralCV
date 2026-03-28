@@ -9,8 +9,8 @@ const client = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || undefined,
 });
 
-const FAST_MODEL  = "llama-3.1-8b-instant";
-const SMART_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
+const FAST_MODEL  = "meta-llama/Llama-3.1-8B-Instruct";
+const SMART_MODEL = process.env.AI_MODEL || "meta-llama/Llama-3.3-70B-Instruct";
 
 // ── Token-efficient agent runner ──────────────────────────────────────────
 async function runAgent<T>(
