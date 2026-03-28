@@ -108,14 +108,17 @@ interface ResumeData {
   summary: string; bulletPoints: string[];
 }
 
-const AGENT1_PROMPT = `Extract resume data. Return ONLY JSON, no extra text.
-Use "" for missing strings, [] for missing arrays, 0 for missing numbers.
-{"name":"","email":"","phone":"","location":"","linkedin":"","github":"",
-"topSkills":[],"allSkills":[],"certifications":[],"languages":[],
-"experienceYears":0,"experienceLevel":"entry",
-"educationLevel":"","institution":"","graduationYear":"","roles":[],"companies":[],
-"projects":[],"summary":"2-sentence profile","bulletPoints":[]}
-Rules: topSkills=top 6 most relevant, allSkills=all tech/tools (no soft skills), bulletPoints=max 8 verbatim, experienceLevel: entry<2y mid 2-5y senior 5-10y lead 10+y`;
+const AGENT1_PROMPT = `You are a resume parser. Read the resume text and return a JSON object.
+
+Return ONLY this JSON structure with no other text:
+{"name":"string","email":"string","phone":"string","location":"string","linkedin":"string","github":"string","topSkills":["skill1","skill2"],"allSkills":["skill1","skill2","skill3"],"certifications":["cert1"],"languages":["lang1"],"experienceYears":2,"experienceLevel":"mid","educationLevel":"Bachelor","institution":"University Name","graduationYear":"2020","roles":["Job Title 1","Job Title 2"],"companies":["Company1","Company2"],"projects":["Project1"],"summary":"Two sentence summary of candidate.","bulletPoints":["bullet1","bullet2","bullet3"]}
+
+Rules:
+- allSkills: list ALL technologies, tools, frameworks, languages, platforms mentioned. This is the most important field.
+- topSkills: top 6 from allSkills by relevance
+- experienceLevel: entry=0-2 years, mid=2-5 years, senior=5-10 years, lead=10+ years
+- bulletPoints: copy up to 8 achievement bullets verbatim from resume
+- Use empty string for missing text fields, empty array for missing arrays, 0 for missing numbers`;
 
 // Agent 2 — JD Analyzer (~300 tokens output)
 interface JDData {
@@ -219,18 +222,40 @@ export async function POST(request: NextRequest) {
     const biasFallback: JDBiasData = { overallRating:"clean",biasedPhrases:[],summary:"No significant bias detected.",confidence:80 };
     const integrityFallback: IntegrityData = { integrityScore:85,verdict:"Resume appears authentic.",flags:[],confidence:80 };
 
-    // ── Agent 1 & 2 — parallel (both use fast model) ──────────────────────
+    // ── Agent 1 & 2 — parallel (Agent 1 uses SMART model — most critical) ──
     agentLogs.push("Agents 1+2 running in parallel...");
     const [resumeData, jdData] = await Promise.all([
-      runAgent<ResumeData>("Agent 1", AGENT1_PROMPT, `RESUME:\n${resumeText}`, FAST_MODEL, 500, resumeFallback),
-      runAgent<JDData>("Agent 2", AGENT2_PROMPT, `JD:\n${jdText}`, FAST_MODEL, 280, jdFallback),
+      runAgent<ResumeData>("Agent 1", AGENT1_PROMPT, `RESUME TEXT:\n${resumeText}`, SMART_MODEL, 700, resumeFallback),
+      runAgent<JDData>("Agent 2", AGENT2_PROMPT, `JD:\n${jdText}`, SMART_MODEL, 350, jdFallback),
     ]);
+
+    // ── Validate Agent 1 — retry if skills empty ────────────────────────────
+    if ((resumeData.allSkills?.length ?? 0) === 0) {
+      agentLogs.push("Agent 1 retry: skills empty, retrying with truncated input...");
+      const retryData = await runAgent<ResumeData>(
+        "Agent 1 Retry", AGENT1_PROMPT,
+        `RESUME TEXT:\n${resumeText.slice(0, 1500)}`,
+        SMART_MODEL, 700, resumeFallback
+      );
+      if ((retryData.allSkills?.length ?? 0) > 0) {
+        Object.assign(resumeData, retryData);
+      }
+    }
+
     agentLogs.push(`Agent 1: ${resumeData.allSkills?.length ?? 0} skills, ${resumeData.experienceYears}y exp`);
     agentLogs.push(`Agent 2: ${jdData.requiredSkills?.length ?? 0} required skills for ${jdData.title}`);
 
-    // ── Build compact context strings ──────────────────────────────────────
-    const candidateCtx = `CANDIDATE: ${resumeData.experienceYears}y ${resumeData.experienceLevel} | Skills: ${(resumeData.allSkills ?? []).slice(0,20).join(", ")} | Education: ${resumeData.educationLevel}`;
-    const jobCtx = `JOB: ${jdData.title} | Required: ${(jdData.requiredSkills ?? []).join(", ")} | Keywords: ${(jdData.keywords ?? []).join(", ")} | Exp: ${jdData.experienceRequired}y`;
+    // ── Build context strings ──────────────────────────────────────────────
+    const candidateCtx = `CANDIDATE: ${resumeData.experienceYears}y ${resumeData.experienceLevel}
+Skills: ${(resumeData.allSkills ?? []).join(", ")}
+Roles: ${(resumeData.roles ?? []).join(", ")}
+Education: ${resumeData.educationLevel} ${resumeData.institution}
+Certs: ${(resumeData.certifications ?? []).join(", ")}`;
+    const jobCtx = `JOB: ${jdData.title}
+Required Skills: ${(jdData.requiredSkills ?? []).join(", ")}
+Nice-to-have: ${(jdData.niceToHaveSkills ?? []).join(", ")}
+Keywords: ${(jdData.keywords ?? []).join(", ")}
+Experience Required: ${jdData.experienceRequired}y`;
 
     // ── Agents 3, 6, 7 — parallel ─────────────────────────────────────────
     agentLogs.push("Agents 3+6+7 running in parallel...");
