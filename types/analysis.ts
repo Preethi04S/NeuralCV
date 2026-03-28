@@ -24,10 +24,26 @@ export interface AlternativeRole {
 
 export interface ResumeProfile {
   name: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  linkedin?: string;
+  github?: string;
+  portfolio?: string;
   topSkills: string[];
+  allSkills?: string[];
+  certifications?: string[];
+  languages?: string[];
+  gpa?: string;
   experienceYears: number;
   experienceLevel: "entry" | "mid" | "senior" | "lead";
   educationLevel: string;
+  institution?: string;
+  graduationYear?: string;
+  roles?: string[];
+  companies?: string[];
+  projects?: string[];
+  publications?: string[];
   summary: string;
 }
 
@@ -106,15 +122,18 @@ export interface LiveJob {
   id: number;
   title: string;
   company: string;
-  url: string;
+  companyLogo?: string;    // company logo URL from Remotive
+  companyUrl?: string;     // company homepage
+  url: string;             // DIRECT application link on the company's own site
   salary: string;
   tags: string[];
   location: string;
   postedDate: string;
   jobType: string;
-  matchScore: number; // 0-100, computed from resume skills vs job tags
-  matchedSkills: string[]; // which skills matched
-  isNew: boolean; // posted within 7 days
+  matchScore: number;      // 0-100, computed from resume skills vs job tags
+  matchedSkills: string[];
+  isNew: boolean;
+  source?: string;         // "remotive"
 }
 
 export interface JobSearchResult {

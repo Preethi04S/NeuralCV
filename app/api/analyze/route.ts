@@ -9,387 +9,295 @@ const client = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || undefined,
 });
 
-const FAST_MODEL = "llama-3.1-8b-instant";
+const FAST_MODEL  = "llama-3.1-8b-instant";
 const SMART_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 
+// ── Token-efficient agent runner ──────────────────────────────────────────
 async function runAgent<T>(
   agentName: string,
   systemPrompt: string,
   userContent: string,
-  model: string
+  model: string,
+  max_tokens: number
 ): Promise<T> {
   const completion = await client.chat.completions.create({
     model,
-    temperature: 0.2,
+    temperature: 0.1,
+    max_tokens,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: userContent },
+      { role: "user",   content: userContent  },
     ],
   });
   const content = completion.choices[0]?.message?.content;
   if (!content) throw new Error(`${agentName} returned no content`);
-  try {
-    return JSON.parse(content) as T;
-  } catch {
-    throw new Error(`${agentName} returned invalid JSON`);
-  }
+  try { return JSON.parse(content) as T; }
+  catch { throw new Error(`${agentName} returned invalid JSON`); }
 }
 
-// ──── Agent 1: Resume Extractor ────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────
+// AGENT PROMPTS — kept precise, no filler sentences
+// ──────────────────────────────────────────────────────────────────────────
+
+// Agent 1 — Resume Extractor (~550 tokens output)
 interface ResumeData {
-  name: string;
-  email: string;
-  topSkills: string[];
-  allSkills: string[];
-  experienceYears: number;
-  experienceLevel: "entry" | "mid" | "senior" | "lead";
-  educationLevel: string;
-  roles: string[];
-  summary: string;
-  bulletPoints: string[];
+  name: string; email: string; phone: string; location: string;
+  linkedin: string; github: string;
+  topSkills: string[]; allSkills: string[]; certifications: string[];
+  languages: string[]; experienceYears: number;
+  experienceLevel: "entry"|"mid"|"senior"|"lead"; educationLevel: string;
+  institution: string; graduationYear: string; roles: string[];
+  companies: string[]; projects: string[];
+  summary: string; bulletPoints: string[];
 }
 
-const AGENT1_PROMPT = `You are a precise resume data extractor.
-Extract structured information from the resume text and return ONLY this JSON:
-{
-  "name": "<full name or 'Unknown'>",
-  "email": "<email or 'Not provided'>",
-  "topSkills": [<top 8 skills as strings>],
-  "allSkills": [<all skills mentioned>],
-  "experienceYears": <integer, total years of work experience>,
-  "experienceLevel": <"entry" if 0-2 yrs, "mid" if 2-5, "senior" if 5-10, "lead" if 10+>,
-  "educationLevel": "<highest degree, e.g. 'B.S. Computer Science'>",
-  "roles": [<list of job titles held>],
-  "summary": "<2-sentence summary of this candidate's profile>",
-  "bulletPoints": [<all bullet points from experience section, verbatim, max 15>]
-}`;
+const AGENT1_PROMPT = `Extract resume data. Return ONLY JSON, no extra text.
+Use "" for missing strings, [] for missing arrays, 0 for missing numbers.
+{"name":"","email":"","phone":"","location":"","linkedin":"","github":"",
+"topSkills":[],"allSkills":[],"certifications":[],"languages":[],
+"experienceYears":0,"experienceLevel":"entry",
+"educationLevel":"","institution":"","graduationYear":"","roles":[],"companies":[],
+"projects":[],"summary":"2-sentence profile","bulletPoints":[]}
+Rules: topSkills=top 6 most relevant, allSkills=all tech/tools (no soft skills), bulletPoints=max 8 verbatim, experienceLevel: entry<2y mid 2-5y senior 5-10y lead 10+y`;
 
-// ──── Agent 2: JD Analyzer ────────────────────────────────────
+// Agent 2 — JD Analyzer (~300 tokens output)
 interface JDData {
-  title: string;
-  requiredSkills: string[];
-  niceToHaveSkills: string[];
-  experienceRequired: number;
-  responsibilities: string[];
-  keywords: string[];
+  title: string; requiredSkills: string[]; niceToHaveSkills: string[];
+  experienceRequired: number; responsibilities: string[]; keywords: string[];
 }
 
-const AGENT2_PROMPT = `You are a precise job description analyzer.
-Extract structured requirements and return ONLY this JSON:
-{
-  "title": "<job title>",
-  "requiredSkills": [<all must-have skills and technologies>],
-  "niceToHaveSkills": [<preferred but optional skills>],
-  "experienceRequired": <integer years required>,
-  "responsibilities": [<top 5 key responsibilities>],
-  "keywords": [<all important technical keywords and phrases>]
-}`;
+const AGENT2_PROMPT = `Extract job description data. Return ONLY JSON.
+{"title":"","requiredSkills":[],"niceToHaveSkills":[],"experienceRequired":0,
+"responsibilities":[],"keywords":[]}
+Rules: requiredSkills=must-have only (max 10), niceToHaveSkills=max 5, responsibilities=top 3, keywords=top 8 technical terms only`;
 
-// ──── Agent 3: Gap Analyzer + Scorer ─────────────────────────
+// Agent 3 — Gap Analyzer + Scorer (~700 tokens output)
 interface GapData {
-  atsScore: number;
-  grade: "A" | "B" | "C" | "D" | "F";
-  verdict: string;
-  skillsMatchPercent: number;
-  missingKeywords: string[];
-  matchedKeywords: string[];
-  strengths: string[];
-  weaknesses: string[];
-  alternativeRoles: Array<{ title: string; matchPercent: number; reason: string }>;
+  atsScore: number; grade: "A"|"B"|"C"|"D"|"F"; verdict: string;
+  skillsMatchPercent: number; missingKeywords: string[]; matchedKeywords: string[];
+  strengths: string[]; weaknesses: string[];
+  alternativeRoles: Array<{title:string; matchPercent:number; reason:string}>;
   confidence: number;
 }
 
-const AGENT3_PROMPT = `You are an expert ATS scoring engine and career analyst.
-Given structured resume data and job description data, perform deep gap analysis.
-Return ONLY this JSON:
-{
-  "atsScore": <integer 0-100, realistic ATS score - most resumes score 35-75>,
-  "grade": <"A" if 85+, "B" if 70-84, "C" if 50-69, "D" if 35-49, "F" if below 35>,
-  "verdict": "<one punchy, specific sentence verdict about this resume for this specific role>",
-  "skillsMatchPercent": <integer 0-100>,
-  "missingKeywords": [<exactly 6 critical keywords from JD missing in resume>],
-  "matchedKeywords": [<keywords present in both resume and JD>],
-  "strengths": [<exactly 4 specific strengths of this resume for this role>],
-  "weaknesses": [<exactly 4 critical weaknesses>],
-  "alternativeRoles": [
-    { "title": "<job role>", "matchPercent": <int>, "reason": "<why resume fits this better>" },
-    <exactly 3 alternative roles this resume may be better suited for>
-  ],
-  "confidence": <integer 0-100, your confidence in this scoring analysis>
-}`;
+const AGENT3_PROMPT = `You are an ATS scoring engine. Score: keyword match 25%, skills match 20%, experience 15%, education 10%, clarity 10%, quantified achievements 10%, role alignment 5%, certs 5%.
+Return ONLY JSON:
+{"atsScore":0,"grade":"A","verdict":"1 sentence","skillsMatchPercent":0,
+"missingKeywords":[],"matchedKeywords":[],"strengths":[],"weaknesses":[],
+"alternativeRoles":[],"confidence":0}
+Rules: grade A≥85 B 70-84 C 50-69 D 35-49 F<35. missingKeywords=5 most impactful. matchedKeywords=top 8 matched only. strengths=3 specific. weaknesses=3 specific. alternativeRoles=3 with title+matchPercent+reason(8 words max). verdict=1 sentence. confidence=integer 0-100`;
 
-// ──── Agent 4: Career Coach ───────────────────────────────────
+// Agent 4 — Career Coach (~1100 tokens output)
 interface CoachData {
-  rewriteSuggestions: Array<{ original: string; improved: string; reason: string }>;
-  interviewQuestions: Array<{ question: string; why: string; tip: string }>;
-  actionPlan: Array<{ day: string; task: string; impact: "high" | "medium" | "low" }>;
+  rewriteSuggestions: Array<{original:string; improved:string; reason:string}>;
+  interviewQuestions: Array<{question:string; why:string; tip:string}>;
+  actionPlan: Array<{day:string; task:string; impact:"high"|"medium"|"low"}>;
   confidence: number;
 }
 
-const AGENT4_PROMPT = `You are a world-class career coach and resume writer.
-Given the full analysis context, produce actionable coaching output.
-Return ONLY this JSON:
-{
-  "rewriteSuggestions": [
-    {
-      "original": "<exact bullet or phrase from the resume>",
-      "improved": "<rewritten with impact language and JD keywords>",
-      "reason": "<one sentence: why this change improves ATS score>"
-    },
-    <exactly 4 rewrite suggestions>
-  ],
-  "interviewQuestions": [
-    {
-      "question": "<likely interview question targeting a gap>",
-      "why": "<one sentence: why they will ask this>",
-      "tip": "<one concrete, specific tip to answer it well>"
-    },
-    <exactly 6 interview questions>
-  ],
-  "actionPlan": [
-    {
-      "day": "<e.g. 'Day 1-2'>",
-      "task": "<specific actionable task to improve resume or prep>",
-      "impact": "<'high', 'medium', or 'low'>"
-    },
-    <exactly 7 action steps forming a complete improvement plan>
-  ],
-  "confidence": <integer 0-100, your confidence in these recommendations>
-}`;
+const AGENT4_PROMPT = `You are a career coach. Return ONLY JSON:
+{"rewriteSuggestions":[],"interviewQuestions":[],"actionPlan":[],"confidence":0}
+Rules:
+- rewriteSuggestions: exactly 3. original=verbatim bullet from list. improved=starts with strong action verb + metric. reason=10 words max.
+- interviewQuestions: exactly 5. target the missing skills. tip=10 words max.
+- actionPlan: exactly 5 steps. day=e.g."Day 1-2". task=15 words max. impact=high|medium|low.
+- confidence: integer 0-100`;
 
-// ──── Agent 5: Counterfactual What-If Simulator (USP #41) ─────
+// Agent 5 — Counterfactual Simulator (~380 tokens output)
 interface CounterfactualData {
-  scenarios: Array<{
-    skill: string;
-    projectedScore: number;
-    pointsGain: number;
-    howToAdd: string;
-  }>;
+  scenarios: Array<{skill:string; projectedScore:number; pointsGain:number; howToAdd:string}>;
   confidence: number;
 }
 
-const AGENT5_PROMPT = `You are a counterfactual career impact simulator.
-Given a candidate's ATS score and their missing keywords, calculate the projected ATS score improvement if they added each skill.
-Return ONLY this JSON:
-{
-  "scenarios": [
-    {
-      "skill": "<missing skill name>",
-      "projectedScore": <new projected ATS score if this skill was added, integer 0-100>,
-      "pointsGain": <integer points gained, must equal projectedScore minus currentScore>,
-      "howToAdd": "<one specific sentence: how to credibly add this to resume>"
-    },
-    <one entry per missing keyword, exactly 5 scenarios, sorted by pointsGain descending>
-  ],
-  "confidence": <integer 0-100>
-}
-Be realistic - adding a single keyword typically adds 3-18 points depending on how critical it is.`;
+const AGENT5_PROMPT = `Compute ATS score impact of adding each missing skill. Return ONLY JSON:
+{"scenarios":[],"confidence":0}
+Rules: exactly 4 scenarios sorted by pointsGain desc. pointsGain=projectedScore-currentScore, range 3-15pts. howToAdd=max 12 words. confidence=integer 0-100`;
 
-// ──── Agent 6: JD Bias Scanner (USP #225) ─────────────────────
+// Agent 6 — JD Bias Scanner (~350 tokens output)
 interface JDBiasData {
-  overallRating: "clean" | "mild" | "moderate" | "severe";
-  biasedPhrases: Array<{
-    phrase: string;
-    biasType: "gender" | "age" | "cultural" | "exclusionary" | "ableist";
-    explanation: string;
-    suggestion: string;
-  }>;
-  summary: string;
-  confidence: number;
+  overallRating: "clean"|"mild"|"moderate"|"severe";
+  biasedPhrases: Array<{phrase:string; biasType:"gender"|"age"|"cultural"|"exclusionary"|"ableist"; explanation:string; suggestion:string}>;
+  summary: string; confidence: number;
 }
 
-const AGENT6_PROMPT = `You are an expert employment law compliance and DEI specialist.
-Scan the job description for biased language that could exclude qualified candidates or create legal risk.
-Look for: gender-coded words (rockstar, ninja, guru, dominant, aggressive), age bias (young, digital native, recent grad, 10+ years for entry roles), exclusionary culture language (culture fit, fast-paced startup life), ableist language, unnecessarily restrictive requirements.
-Return ONLY this JSON:
-{
-  "overallRating": <"clean" if 0 issues, "mild" if 1-2, "moderate" if 3-4, "severe" if 5+>,
-  "biasedPhrases": [
-    {
-      "phrase": "<exact phrase from JD>",
-      "biasType": <"gender" | "age" | "cultural" | "exclusionary" | "ableist">,
-      "explanation": "<one sentence why this is biased>",
-      "suggestion": "<replacement phrase>"
-    }
-  ],
-  "summary": "<one sentence overall assessment of the JD's inclusivity>",
-  "confidence": <integer 0-100>
-}
-If the JD is clean, return an empty biasedPhrases array and rating "clean".`;
+const AGENT6_PROMPT = `Scan JD for biased language: gender-coded (rockstar/ninja/guru/aggressive/dominant), age bias (digital native/recent grad/10+ yrs for entry role), exclusionary, ableist.
+Return ONLY JSON: {"overallRating":"clean","biasedPhrases":[],"summary":"","confidence":0}
+Rules: overallRating clean=0 mild=1-2 moderate=3-4 severe=5+. Only flag real bias. biasedPhrases max 4. explanation=8 words. suggestion=8 words. summary=1 sentence. confidence=integer 0-100`;
 
-// ──── Agent 7: Resume Integrity Check (USP #331) ──────────────
+// Agent 7 — Integrity Checker (~350 tokens output)
 interface IntegrityData {
-  integrityScore: number;
-  verdict: string;
-  flags: Array<{
-    issue: string;
-    severity: "low" | "medium" | "high";
-    detail: string;
-  }>;
+  integrityScore: number; verdict: string;
+  flags: Array<{issue:string; severity:"low"|"medium"|"high"; detail:string}>;
   confidence: number;
 }
 
-const AGENT7_PROMPT = `You are a resume authenticity and integrity analyst.
-Analyze the resume for red flags that indicate keyword stuffing, skill-experience mismatch, implausible claims, suspicious timeline gaps, or generic filler content.
-Return ONLY this JSON:
-{
-  "integrityScore": <integer 0-100, where 100 is completely authentic and credible>,
-  "verdict": "<one sentence overall integrity assessment>",
-  "flags": [
-    {
-      "issue": "<short issue title>",
-      "severity": <"low" | "medium" | "high">,
-      "detail": "<one sentence explanation of the concern>"
-    }
-  ],
-  "confidence": <integer 0-100>
-}
-Most genuine resumes score 70-95. Only flag actual concerns - do not invent flags. If resume looks authentic, return empty flags array and high score.`;
+const AGENT7_PROMPT = `Analyze resume for red flags: keyword stuffing, skill-experience mismatch, implausible claims, timeline gaps >6mo, generic filler phrases.
+Return ONLY JSON: {"integrityScore":0,"verdict":"","flags":[],"confidence":0}
+Rules: integrityScore 100=authentic, genuine resumes 70-95. flags max 3, only real concerns. severity=low|medium|high. detail=10 words max. verdict=1 sentence. confidence=integer 0-100`;
 
+// ──────────────────────────────────────────────────────────────────────────
+// MAIN PIPELINE
+// ──────────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const agentLogs: string[] = [];
-
   try {
-    const body = await request.json();
-    const { resume, jobDescription } = body;
+    const { resume, jobDescription } = await request.json();
 
     if (!resume?.trim() || !jobDescription?.trim()) {
       return NextResponse.json({ error: "Both resume and job description are required." }, { status: 400 });
     }
 
-    if (resume.length > 10000 || jobDescription.length > 6000) {
-      return NextResponse.json({ error: "Input too long. Resume max 10000 chars, JD max 6000 chars." }, { status: 400 });
-    }
+    // ── Trim inputs to save tokens ─────────────────────────────────────────
+    const resumeText = resume.slice(0, 4000);
+    const jdText     = jobDescription.slice(0, 2500);
 
     const startTime = Date.now();
 
-    // ── Agent 1 ──
-    agentLogs.push("Agent 1 (Resume Extractor): Parsing resume structure...");
-    const resumeData = await runAgent<ResumeData>("Agent 1", AGENT1_PROMPT, `RESUME TEXT:\n${resume}`, FAST_MODEL);
-    agentLogs.push(`Agent 1 complete: Extracted ${resumeData.allSkills?.length ?? 0} skills, ${resumeData.experienceYears}y exp`);
+    // ── Agent 1 & 2 — sequential (cheap fast model) ───────────────────────
+    agentLogs.push("Agent 1 (Resume Extractor): Parsing resume...");
+    const resumeData = await runAgent<ResumeData>(
+      "Agent 1", AGENT1_PROMPT,
+      `RESUME:\n${resumeText}`,
+      FAST_MODEL, 420
+    );
+    agentLogs.push(`Agent 1: ${resumeData.allSkills?.length ?? 0} skills, ${resumeData.experienceYears}y exp`);
 
-    // ── Agent 2 ──
     agentLogs.push("Agent 2 (JD Analyzer): Parsing job requirements...");
-    const jdData = await runAgent<JDData>("Agent 2", AGENT2_PROMPT, `JOB DESCRIPTION:\n${jobDescription}`, FAST_MODEL);
-    agentLogs.push(`Agent 2 complete: Found ${jdData.requiredSkills?.length ?? 0} required skills for ${jdData.title}`);
+    const jdData = await runAgent<JDData>(
+      "Agent 2", AGENT2_PROMPT,
+      `JD:\n${jdText}`,
+      FAST_MODEL, 220
+    );
+    agentLogs.push(`Agent 2: ${jdData.requiredSkills?.length ?? 0} required skills for ${jdData.title}`);
 
-    // ── Agents 3, 6, 7 run in parallel (independent) ──
-    agentLogs.push("Agent 3 (Gap Analyzer): Scoring resume against job requirements...");
-    agentLogs.push("Agent 6 (JD Bias Scanner): Scanning job description for bias...");
-    agentLogs.push("Agent 7 (Integrity Check): Analyzing resume authenticity...");
+    // ── Build compact context strings (no pretty-print JSON) ──────────────
+    const candidateCtx =
+      `CANDIDATE: ${resumeData.experienceYears}y ${resumeData.experienceLevel} | Skills: ${(resumeData.allSkills ?? []).join(", ")} | Certs: ${(resumeData.certifications ?? []).join(", ")} | Education: ${resumeData.educationLevel}`;
 
+    const jobCtx =
+      `JOB: ${jdData.title} | Required: ${(jdData.requiredSkills ?? []).join(", ")} | Nice-to-have: ${(jdData.niceToHaveSkills ?? []).join(", ")} | Keywords: ${(jdData.keywords ?? []).join(", ")} | Exp required: ${jdData.experienceRequired}y`;
+
+    // ── Agents 3, 6, 7 — parallel ─────────────────────────────────────────
+    agentLogs.push("Agents 3+6+7 running in parallel...");
     const [gapData, jdBiasData, integrityData] = await Promise.all([
       runAgent<GapData>(
-        "Agent 3",
-        AGENT3_PROMPT,
-        `RESUME PROFILE:\n${JSON.stringify(resumeData, null, 2)}\n\nJOB REQUIREMENTS:\n${JSON.stringify(jdData, null, 2)}`,
-        SMART_MODEL
+        "Agent 3", AGENT3_PROMPT,
+        `${candidateCtx}\n${jobCtx}`,
+        SMART_MODEL, 580
       ),
       runAgent<JDBiasData>(
-        "Agent 6",
-        AGENT6_PROMPT,
-        `JOB DESCRIPTION:\n${jobDescription}`,
-        FAST_MODEL
+        "Agent 6", AGENT6_PROMPT,
+        `JD:\n${jdText}`,
+        FAST_MODEL, 260
       ),
       runAgent<IntegrityData>(
-        "Agent 7",
-        AGENT7_PROMPT,
-        `RESUME TEXT:\n${resume}\n\nRESUME PROFILE:\n${JSON.stringify(resumeData, null, 2)}`,
-        FAST_MODEL
+        "Agent 7", AGENT7_PROMPT,
+        `RESUME:\n${resumeText}`,
+        FAST_MODEL, 220
       ),
     ]);
+    agentLogs.push(`Agent 3: ATS ${gapData.atsScore}/100 Grade ${gapData.grade}`);
+    agentLogs.push(`Agent 6: Bias ${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues`);
+    agentLogs.push(`Agent 7: Integrity ${integrityData.integrityScore}/100`);
 
-    agentLogs.push(`Agent 3 complete: ATS Score ${gapData.atsScore}/100, Grade ${gapData.grade}, Confidence ${gapData.confidence}%`);
-    agentLogs.push(`Agent 6 complete: JD Bias Rating - ${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues found`);
-    agentLogs.push(`Agent 7 complete: Resume Integrity Score ${integrityData.integrityScore}/100`);
+    // ── Agent 4 — Career Coach (smart model, compact context) ─────────────
+    agentLogs.push("Agent 4 (Career Coach): Generating recommendations...");
+    const coachCtx =
+      `ROLE: ${jdData.title}\nREQUIRED: ${(jdData.requiredSkills ?? []).slice(0, 8).join(", ")}\nCANDIDATE: ${(resumeData.topSkills ?? []).join(", ")}\nMISSING: ${(gapData.missingKeywords ?? []).join(", ")}\nATS: ${gapData.atsScore}/100\nBULLETS:\n${(resumeData.bulletPoints ?? []).slice(0, 6).join("\n")}`;
 
-    // ── Agent 4 ──
-    agentLogs.push("Agent 4 (Career Coach): Generating personalised recommendations...");
     const coachData = await runAgent<CoachData>(
-      "Agent 4",
-      AGENT4_PROMPT,
-      `CANDIDATE PROFILE:\n${JSON.stringify(resumeData, null, 2)}\n\nJOB REQUIREMENTS:\n${JSON.stringify(jdData, null, 2)}\n\nGAP ANALYSIS:\n${JSON.stringify(gapData, null, 2)}\n\nOriginal bullet points:\n${resumeData.bulletPoints?.slice(0, 10).join("\n") ?? ""}`,
-      SMART_MODEL
+      "Agent 4", AGENT4_PROMPT,
+      coachCtx,
+      SMART_MODEL, 820
     );
-    agentLogs.push(`Agent 4 complete: ${coachData.rewriteSuggestions?.length ?? 0} rewrites, ${coachData.interviewQuestions?.length ?? 0} questions, Confidence ${coachData.confidence}%`);
+    agentLogs.push(`Agent 4: ${coachData.rewriteSuggestions?.length ?? 0} rewrites, ${coachData.interviewQuestions?.length ?? 0} questions`);
 
-    // ── Agent 5: Counterfactual (runs after Agent 3 so it knows the score) ──
-    agentLogs.push("Agent 5 (Counterfactual Simulator): Computing what-if skill impact scenarios...");
+    // ── Agent 5 — Counterfactual (fast model, minimal context) ───────────
+    agentLogs.push("Agent 5 (Counterfactual): Computing what-if scenarios...");
     const counterfactualData = await runAgent<CounterfactualData>(
-      "Agent 5",
-      AGENT5_PROMPT,
-      `CURRENT ATS SCORE: ${gapData.atsScore}\nMISSING KEYWORDS: ${(gapData.missingKeywords ?? []).join(", ")}\nCANDIDATE PROFILE: ${resumeData.experienceLevel}-level, ${resumeData.experienceYears}y exp\nJOB TITLE: ${jdData.title}`,
-      FAST_MODEL
+      "Agent 5", AGENT5_PROMPT,
+      `CURRENT SCORE: ${gapData.atsScore}\nMISSING SKILLS: ${(gapData.missingKeywords ?? []).join(", ")}\nJOB: ${jdData.title}\nLEVEL: ${resumeData.experienceLevel}`,
+      FAST_MODEL, 240
     );
-    agentLogs.push(`Agent 5 complete: ${counterfactualData.scenarios?.length ?? 0} what-if scenarios generated`);
+    agentLogs.push(`Agent 5: ${counterfactualData.scenarios?.length ?? 0} scenarios`);
 
-    // ── Build AI Passport ──
+    // ── Build result ───────────────────────────────────────────────────────
     const elapsedMs = Date.now() - startTime;
+    const allConf = [gapData.confidence, coachData.confidence, counterfactualData.confidence, jdBiasData.confidence, integrityData.confidence].filter(Boolean) as number[];
+    const overallConfidence = Math.round(allConf.reduce((a, b) => a + b, 0) / allConf.length);
+
+    agentLogs.push(`Done in ${(elapsedMs / 1000).toFixed(1)}s — confidence ${overallConfidence}%`);
+
     const agentPassport = [
-      { agentId: 1, name: "Resume Extractor", model: FAST_MODEL, role: "Parses and structures resume data", confidence: 92, tokensUsed: "~800", outputSummary: `Extracted ${resumeData.allSkills?.length ?? 0} skills, ${resumeData.experienceYears}y exp, ${resumeData.experienceLevel} level` },
-      { agentId: 2, name: "JD Analyzer", model: FAST_MODEL, role: "Extracts job requirements and keywords", confidence: 94, tokensUsed: "~600", outputSummary: `Found ${jdData.requiredSkills?.length ?? 0} required skills for ${jdData.title}` },
-      { agentId: 3, name: "Gap Analyzer", model: SMART_MODEL, role: "Scores ATS compatibility and identifies gaps", confidence: gapData.confidence ?? 88, tokensUsed: "~1200", outputSummary: `ATS Score: ${gapData.atsScore}/100, Grade: ${gapData.grade}, Skills match: ${gapData.skillsMatchPercent}%` },
-      { agentId: 4, name: "Career Coach", model: SMART_MODEL, role: "Generates rewrites, interview prep, action plan", confidence: coachData.confidence ?? 85, tokensUsed: "~2000", outputSummary: `${coachData.rewriteSuggestions?.length ?? 0} rewrites, ${coachData.interviewQuestions?.length ?? 0} interview questions, 7-day plan` },
-      { agentId: 5, name: "Counterfactual Simulator", model: FAST_MODEL, role: "Computes projected score improvements per skill", confidence: counterfactualData.confidence ?? 82, tokensUsed: "~500", outputSummary: `${counterfactualData.scenarios?.length ?? 0} what-if scenarios, top gain: +${Math.max(...(counterfactualData.scenarios?.map(s => s.pointsGain) ?? [0]))} pts` },
-      { agentId: 6, name: "JD Bias Scanner", model: FAST_MODEL, role: "Detects biased language in job description", confidence: jdBiasData.confidence ?? 90, tokensUsed: "~400", outputSummary: `Bias rating: ${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues found` },
-      { agentId: 7, name: "Integrity Checker", model: FAST_MODEL, role: "Verifies resume authenticity and credibility", confidence: integrityData.confidence ?? 87, tokensUsed: "~600", outputSummary: `Integrity score: ${integrityData.integrityScore}/100 - ${integrityData.verdict}` },
+      { agentId: 1, name: "Resume Extractor",       model: FAST_MODEL,  role: "Parses resume structure",           confidence: 92, tokensUsed: "~420",  outputSummary: `${resumeData.allSkills?.length ?? 0} skills, ${resumeData.experienceYears}y exp` },
+      { agentId: 2, name: "JD Analyzer",             model: FAST_MODEL,  role: "Extracts job requirements",         confidence: 94, tokensUsed: "~220",  outputSummary: `${jdData.requiredSkills?.length ?? 0} required skills for ${jdData.title}` },
+      { agentId: 3, name: "Gap Analyzer",            model: SMART_MODEL, role: "Scores ATS compatibility",          confidence: gapData.confidence ?? 88, tokensUsed: "~580", outputSummary: `Score: ${gapData.atsScore}/100, Grade: ${gapData.grade}` },
+      { agentId: 4, name: "Career Coach",            model: SMART_MODEL, role: "Rewrites, interview prep, actions", confidence: coachData.confidence ?? 85, tokensUsed: "~820", outputSummary: `${coachData.rewriteSuggestions?.length ?? 0} rewrites, 5-day plan` },
+      { agentId: 5, name: "Counterfactual Simulator",model: FAST_MODEL,  role: "What-if skill impact",              confidence: counterfactualData.confidence ?? 82, tokensUsed: "~240", outputSummary: `Top gain: +${Math.max(...(counterfactualData.scenarios?.map(s => s.pointsGain) ?? [0]))} pts` },
+      { agentId: 6, name: "JD Bias Scanner",         model: FAST_MODEL,  role: "Detects biased JD language",        confidence: jdBiasData.confidence ?? 90, tokensUsed: "~260", outputSummary: `${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues` },
+      { agentId: 7, name: "Integrity Checker",       model: FAST_MODEL,  role: "Verifies resume authenticity",      confidence: integrityData.confidence ?? 87, tokensUsed: "~220", outputSummary: `Score: ${integrityData.integrityScore}/100` },
     ];
 
-    // ── Overall confidence ──
-    const allConfidences = [gapData.confidence, coachData.confidence, counterfactualData.confidence, jdBiasData.confidence, integrityData.confidence].filter(Boolean) as number[];
-    const overallConfidence = Math.round(allConfidences.reduce((a, b) => a + b, 0) / allConfidences.length);
-
-    agentLogs.push(`Pipeline complete in ${((elapsedMs) / 1000).toFixed(1)}s - Overall confidence: ${overallConfidence}%`);
-
-    const result = {
-      atsScore: gapData.atsScore,
-      grade: gapData.grade,
-      verdict: gapData.verdict,
-      skillsMatchPercent: gapData.skillsMatchPercent,
-      missingKeywords: gapData.missingKeywords ?? [],
-      matchedKeywords: gapData.matchedKeywords ?? [],
-      strengths: gapData.strengths ?? [],
-      weaknesses: gapData.weaknesses ?? [],
-      rewriteSuggestions: coachData.rewriteSuggestions ?? [],
-      interviewQuestions: coachData.interviewQuestions ?? [],
-      actionPlan: coachData.actionPlan ?? [],
-      alternativeRoles: gapData.alternativeRoles ?? [],
+    return NextResponse.json({
+      atsScore:          gapData.atsScore,
+      grade:             gapData.grade,
+      verdict:           gapData.verdict,
+      skillsMatchPercent:gapData.skillsMatchPercent,
+      missingKeywords:   gapData.missingKeywords   ?? [],
+      matchedKeywords:   gapData.matchedKeywords   ?? [],
+      strengths:         gapData.strengths         ?? [],
+      weaknesses:        gapData.weaknesses        ?? [],
+      rewriteSuggestions:coachData.rewriteSuggestions ?? [],
+      interviewQuestions:coachData.interviewQuestions ?? [],
+      actionPlan:        coachData.actionPlan       ?? [],
+      alternativeRoles:  gapData.alternativeRoles  ?? [],
       resumeProfile: {
-        name: resumeData.name,
-        topSkills: resumeData.topSkills ?? [],
+        name:            resumeData.name,
+        email:           resumeData.email,
+        phone:           resumeData.phone,
+        location:        resumeData.location,
+        linkedin:        resumeData.linkedin,
+        github:          resumeData.github,
+        topSkills:       resumeData.topSkills       ?? [],
+        allSkills:       resumeData.allSkills       ?? [],
+        certifications:  resumeData.certifications  ?? [],
+        languages:       resumeData.languages       ?? [],
         experienceYears: resumeData.experienceYears,
         experienceLevel: resumeData.experienceLevel,
-        educationLevel: resumeData.educationLevel,
-        summary: resumeData.summary,
+        educationLevel:  resumeData.educationLevel,
+        institution:     resumeData.institution,
+        graduationYear:  resumeData.graduationYear,
+        roles:           resumeData.roles           ?? [],
+        companies:       resumeData.companies       ?? [],
+        projects:        resumeData.projects        ?? [],
+        summary:         resumeData.summary,
       },
-      // New USP features
       counterfactuals: (counterfactualData.scenarios ?? []).map(s => ({
-        skill: s.skill,
-        currentScore: gapData.atsScore,
+        skill:          s.skill,
+        currentScore:   gapData.atsScore,
         projectedScore: s.projectedScore,
-        pointsGain: s.pointsGain,
-        howToAdd: s.howToAdd,
+        pointsGain:     s.pointsGain,
+        howToAdd:       s.howToAdd,
       })),
       jdBiasReport: {
-        overallRating: jdBiasData.overallRating ?? "clean",
-        biasedPhrases: jdBiasData.biasedPhrases ?? [],
-        summary: jdBiasData.summary ?? "",
+        overallRating:  jdBiasData.overallRating  ?? "clean",
+        biasedPhrases:  jdBiasData.biasedPhrases  ?? [],
+        summary:        jdBiasData.summary        ?? "",
       },
       resumeIntegrity: {
         integrityScore: integrityData.integrityScore ?? 85,
-        verdict: integrityData.verdict ?? "",
-        flags: integrityData.flags ?? [],
+        verdict:        integrityData.verdict        ?? "",
+        flags:          integrityData.flags          ?? [],
       },
       agentPassport,
       overallConfidence,
       agentLogs,
-    };
+    });
 
-    return NextResponse.json(result);
   } catch (error: unknown) {
-    console.error("Analysis pipeline error:", error);
-    agentLogs.push(`Pipeline error: ${error instanceof Error ? error.message : "Unknown error"}`);
+    console.error("Pipeline error:", error);
+    agentLogs.push(`Error: ${error instanceof Error ? error.message : "Unknown"}`);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Analysis failed", agentLogs },
       { status: 500 }
