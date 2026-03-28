@@ -47,78 +47,77 @@
 
 ## System Architecture
 
-```mermaid
-graph TB
-    subgraph USER["👤  User Flow"]
-        U1["Upload Resume\n(.pdf / .docx / .txt)"]
-        U2["Paste Job Description"]
-        U3["View Results"]
-    end
+```
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                         NEURALCV — SYSTEM ARCHITECTURE                          ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
 
-    subgraph CLIENT["🖥️  Next.js 16 — App Router (Client)"]
-        direction LR
-        LP["Landing Page\nCanvas ATS Animation"]
-        DB["Dashboard\nLive Agent Status"]
-        ED["Resume Editor\nLive Diff View"]
-        LG["Login Page"]
-    end
-
-    subgraph API["⚡  API Route Handlers (Server)"]
-        AN["/api/analyze\nATS Score + Keyword Extraction"]
-        OP["/api/optimize-resume\nGPT-4o Full Rewrite"]
-        JB["/api/jobs\nLive Job Matching"]
-        CL["/api/coverletter\nTailored Generation"]
-        LI["/api/linkedin\nProfile Optimizer"]
-        IP["/api/interview-practice\nQuestion Generator"]
-    end
-
-    subgraph PARSE["📄  Document Engine"]
-        PDF["unpdf\nPDF Extraction"]
-        DOC["mammoth\nDOCX Extraction"]
-        RAW["Raw Text\nFallback"]
-    end
-
-    subgraph AI["🤖  AI Engine"]
-        GPT["OpenAI GPT-4o\nStructured JSON Output"]
-        PR["Prompt Chains\nRole-based Engineering"]
-        SC["Score Calculator\nMulti-dimension Rubric"]
-    end
-
-    subgraph COMPONENTS["🧩  React Component Library"]
-        RD["ResultsDashboard"]
-        RC["RadarChart (SVG)"]
-        KV["KeywordVisualizer"]
-        RW["RewriteDiff"]
-        CC["CareerChatbot"]
-        AP["ActionPlan"]
-        IP2["InterviewPrep"]
-        CG["CoverLetterGenerator"]
-        LO["LinkedInOptimizer"]
-        CF["CounterfactualSimulator"]
-        SR["ScoreReveal"]
-        AG["AgentPipeline"]
-    end
-
-    U1 --> LP
-    U2 --> LP
-    LP --> AN
-    AN --> PDF & DOC & RAW
-    AN --> GPT --> PR --> SC
-    SC --> RD & RC & KV & SR & AG
-    DB --> OP & JB & IP & LI
-    OP --> GPT
-    OP --> RW & CC & CF
-    IP --> GPT --> IP2
-    CL --> GPT --> CG
-    LI --> GPT --> LO
-    RD --> U3
-
-    style USER fill:#0d1117,stroke:#f59e0b,color:#f59e0b
-    style CLIENT fill:#0d1117,stroke:#00d4aa,color:#00d4aa
-    style API fill:#0d1117,stroke:#6366f1,color:#6366f1
-    style PARSE fill:#0d1117,stroke:#a855f7,color:#a855f7
-    style AI fill:#0d1117,stroke:#f59e0b,color:#f59e0b
-    style COMPONENTS fill:#0d1117,stroke:#ec4899,color:#ec4899
+  👤 USER
+  ┌─────────────────────────────────────────────────────┐
+  │  Upload Resume (.pdf / .docx / .txt)  +  Job URL    │
+  └──────────────────────────┬──────────────────────────┘
+                             │
+                             ▼
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║  🖥️  NEXT.JS 16 — APP ROUTER (CLIENT)                                           ║
+║  ┌──────────────────┐  ┌──────────────────┐  ┌───────────────┐  ┌────────────┐ ║
+║  │  Landing Page    │  │   Dashboard      │  │ Resume Editor │  │   Login    │ ║
+║  │  Canvas ATS Anim │  │  Live Agents     │  │  Live Diff    │  │  Page      │ ║
+║  └────────┬─────────┘  └────────┬─────────┘  └──────┬────────┘  └────────────┘ ║
+╚═══════════╪════════════════════╪═══════════════════╪══════════════════════════╝
+            │                    │                   │
+            ▼                    ▼                   ▼
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║  ⚡ API ROUTE HANDLERS (SERVER)                                                  ║
+║  ┌──────────────┐ ┌──────────────────┐ ┌──────────────┐ ┌───────────────────┐  ║
+║  │ /api/analyze │ │/api/optimize-    │ │ /api/cover-  │ │/api/interview-    │  ║
+║  │ ATS Score +  │ │resume  GPT-4o    │ │letter  Cover │ │practice  Q & A    │  ║
+║  │ Keywords     │ │Full Rewrite      │ │Letter Gen    │ │Generator          │  ║
+║  └──────┬───────┘ └────────┬─────────┘ └──────┬───────┘ └────────┬──────────┘  ║
+║  ┌──────────────┐          │                   │                  │             ║
+║  │  /api/jobs   │          │          ┌─────────────────┐         │             ║
+║  │  Job Matcher │          │          │  /api/linkedin  │         │             ║
+║  └──────┬───────┘          │          │  Profile Optim  │         │             ║
+║         └──────────────────┴──────────┴────────┬────────┴─────────┘             ║
+╚══════════════════════════════════════════════════╪═══════════════════════════════╝
+                                                   │
+            ┌──────────────────────────────────────┤
+            │                                      │
+            ▼                                      ▼
+╔═══════════════════════════════╗   ╔══════════════════════════════════╗
+║  📄 DOCUMENT ENGINE           ║   ║  🤖 AI ENGINE                    ║
+║  ┌─────────┐ ┌─────────────┐  ║   ║  ┌──────────────────────────┐   ║
+║  │  unpdf  │ │  mammoth    │  ║   ║  │   OpenAI GPT-4o          │   ║
+║  │   PDF   │ │   DOCX      │  ║   ║  │   Structured JSON Output │   ║
+║  └────┬────┘ └──────┬──────┘  ║   ║  └────────────┬─────────────┘   ║
+║       └──────┬───────┘         ║   ║               │                 ║
+║         ┌────▼────┐            ║   ║  ┌────────────▼─────────────┐   ║
+║         │  Plain  │            ║   ║  │  Prompt Engineering      │   ║
+║         │  Text   │            ║   ║  │  Role-based Chains       │   ║
+║         └────┬────┘            ║   ║  └────────────┬─────────────┘   ║
+╚══════════════╪════════════════╝   ║  ┌────────────▼─────────────┐   ║
+               │                    ║  │  Score Calculator        │   ║
+               └────────────────────║  │  Multi-dimension Rubric  │   ║
+                                    ║  └──────────────────────────┘   ║
+                                    ╚══════════════════════════════════╝
+                                                   │
+                                                   ▼
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║  🧩 REACT COMPONENT LIBRARY                                                     ║
+║                                                                                  ║
+║  ┌──────────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐  ║
+║  │ ResultsDashboard │  │  RadarChart  │  │  RewriteDiff │  │ CareerChatbot  │  ║
+║  └──────────────────┘  └──────────────┘  └──────────────┘  └────────────────┘  ║
+║  ┌──────────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐  ║
+║  │KeywordVisualizer │  │  ActionPlan  │  │ InterviewPrep│  │  ScoreReveal   │  ║
+║  └──────────────────┘  └──────────────┘  └──────────────┘  └────────────────┘  ║
+║  ┌──────────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐  ║
+║  │CoverLetterGen    │  │LinkedInOptim │  │Counterfactual│  │ AgentPipeline  │  ║
+║  └──────────────────┘  └──────────────┘  └──────────────┘  └────────────────┘  ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
+                                                   │
+                                                   ▼
+                                    ✅  RESULTS DELIVERED TO USER
 ```
 
 ---
