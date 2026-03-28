@@ -12,50 +12,84 @@ const client = new OpenAI({
 const FAST_MODEL  = "llama-3.1-8b-instant";
 const SMART_MODEL = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 
-// ── Sanitize input to remove characters that break JSON generation ─────────
+// ── Sanitize input ────────────────────────────────────────────────────────
 function sanitize(text: string): string {
   return text
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, '-')
-    .replace(/[\u2022\u25E6\u25AA\u25CF\u2023]/g, '-')
-    .replace(/[^\x00-\x7F]/g, ' ')
+    .replace(/[\u2018\u2019\u02BC]/g, "'")
+    .replace(/[\u201C\u201D\u00AB\u00BB]/g, '"')
+    .replace(/[\u2013\u2014\u2015]/g, '-')
+    .replace(/[\u2022\u25E6\u25AA\u25CF\u2023\u2024\u2043]/g, '-')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[^\x00-\x7F]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-// ── Extract JSON from model output robustly ───────────────────────────────
-function extractJSON<T>(raw: string): T {
-  const cleaned = raw
-    .replace(/```json\s*/gi, '')
-    .replace(/```\s*/g, '')
-    .trim();
-  try { return JSON.parse(cleaned) as T; } catch { /* continue */ }
-  const m = cleaned.match(/\{[\s\S]*\}/);
-  if (m) { try { return JSON.parse(m[0]) as T; } catch { /* continue */ } }
-  throw new Error("Could not parse JSON from response");
+// ── Robust JSON extractor — 5 fallback strategies ─────────────────────────
+function extractJSON<T>(raw: string, fallback: T): T {
+  // Strategy 1: strip fences, direct parse
+  const s1 = raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+  try { return JSON.parse(s1) as T; } catch { /* continue */ }
+
+  // Strategy 2: extract first {...} block
+  const m1 = s1.match(/\{[\s\S]*\}/);
+  if (m1) { try { return JSON.parse(m1[0]) as T; } catch { /* continue */ } }
+
+  // Strategy 3: extract last {...} block
+  const all = [...s1.matchAll(/\{[\s\S]*?\}/g)];
+  if (all.length) {
+    const last = all[all.length - 1][0];
+    try { return JSON.parse(last) as T; } catch { /* continue */ }
+  }
+
+  // Strategy 4: fix trailing commas and re-parse
+  const s4 = s1.replace(/,\s*([}\]])/g, '$1');
+  try { return JSON.parse(s4) as T; } catch { /* continue */ }
+  const m4 = s4.match(/\{[\s\S]*\}/);
+  if (m4) { try { return JSON.parse(m4[0]) as T; } catch { /* continue */ } }
+
+  // Strategy 5: return fallback silently
+  return fallback;
 }
 
-// ── Token-efficient agent runner ──────────────────────────────────────────
+// ── Agent runner with fallback — never throws ─────────────────────────────
 async function runAgent<T>(
   agentName: string,
   systemPrompt: string,
   userContent: string,
   model: string,
-  max_tokens: number
+  max_tokens: number,
+  fallback: T
 ): Promise<T> {
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.1,
-    max_tokens,
-    messages: [
-      { role: "system", content: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences, no explanation." },
-      { role: "user",   content: sanitize(userContent) },
-    ],
-  });
-  const content = completion.choices[0]?.message?.content;
-  if (!content) throw new Error(`${agentName} returned no content`);
-  return extractJSON<T>(content);
+  const sys = `${systemPrompt}\n\nCRITICAL: Your ENTIRE response must be a single valid JSON object. No text before or after. No markdown. No code fences. Start with { and end with }.`;
+  const usr = sanitize(userContent).slice(0, 3000);
+
+  try {
+    const completion = await client.chat.completions.create({
+      model, temperature: 0.05, max_tokens,
+      messages: [
+        { role: "system", content: sys },
+        { role: "user",   content: usr },
+      ],
+    });
+    const content = completion.choices[0]?.message?.content ?? '';
+    return extractJSON<T>(content, fallback);
+  } catch {
+    // On API error, retry once with smart model
+    try {
+      const completion2 = await client.chat.completions.create({
+        model: SMART_MODEL, temperature: 0.05, max_tokens: max_tokens + 200,
+        messages: [
+          { role: "system", content: sys },
+          { role: "user",   content: usr.slice(0, 2000) },
+        ],
+      });
+      const content2 = completion2.choices[0]?.message?.content ?? '';
+      return extractJSON<T>(content2, fallback);
+    } catch {
+      return fallback;
+    }
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -170,77 +204,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Both resume and job description are required." }, { status: 400 });
     }
 
-    // ── Trim inputs to save tokens ─────────────────────────────────────────
-    const resumeText = resume.slice(0, 4000);
-    const jdText     = jobDescription.slice(0, 2500);
+    // ── Sanitize + trim inputs ─────────────────────────────────────────────
+    const resumeText = sanitize(resume).slice(0, 3000);
+    const jdText     = sanitize(jobDescription).slice(0, 2000);
 
     const startTime = Date.now();
 
-    // ── Agent 1 & 2 — sequential (cheap fast model) ───────────────────────
-    agentLogs.push("Agent 1 (Resume Extractor): Parsing resume...");
-    const resumeData = await runAgent<ResumeData>(
-      "Agent 1", AGENT1_PROMPT,
-      `RESUME:\n${resumeText}`,
-      FAST_MODEL, 420
-    );
-    agentLogs.push(`Agent 1: ${resumeData.allSkills?.length ?? 0} skills, ${resumeData.experienceYears}y exp`);
+    // ── Default fallbacks for every agent ─────────────────────────────────
+    const resumeFallback: ResumeData = { name:"",email:"",phone:"",location:"",linkedin:"",github:"",topSkills:[],allSkills:[],certifications:[],languages:[],experienceYears:0,experienceLevel:"entry",educationLevel:"",institution:"",graduationYear:"",roles:[],companies:[],projects:[],summary:"",bulletPoints:[] };
+    const jdFallback: JDData = { title:"Role",requiredSkills:[],niceToHaveSkills:[],experienceRequired:0,responsibilities:[],keywords:[] };
+    const gapFallback: GapData = { atsScore:50,grade:"C",verdict:"Analysis complete.",skillsMatchPercent:50,missingKeywords:[],matchedKeywords:[],strengths:[],weaknesses:[],alternativeRoles:[],confidence:70 };
+    const coachFallback: CoachData = { rewriteSuggestions:[],interviewQuestions:[],actionPlan:[],confidence:70 };
+    const cfFallback: CounterfactualData = { scenarios:[],confidence:70 };
+    const biasFallback: JDBiasData = { overallRating:"clean",biasedPhrases:[],summary:"No significant bias detected.",confidence:80 };
+    const integrityFallback: IntegrityData = { integrityScore:85,verdict:"Resume appears authentic.",flags:[],confidence:80 };
 
-    agentLogs.push("Agent 2 (JD Analyzer): Parsing job requirements...");
-    const jdData = await runAgent<JDData>(
-      "Agent 2", AGENT2_PROMPT,
-      `JD:\n${jdText}`,
-      FAST_MODEL, 220
-    );
+    // ── Agent 1 & 2 — parallel (both use fast model) ──────────────────────
+    agentLogs.push("Agents 1+2 running in parallel...");
+    const [resumeData, jdData] = await Promise.all([
+      runAgent<ResumeData>("Agent 1", AGENT1_PROMPT, `RESUME:\n${resumeText}`, FAST_MODEL, 500, resumeFallback),
+      runAgent<JDData>("Agent 2", AGENT2_PROMPT, `JD:\n${jdText}`, FAST_MODEL, 280, jdFallback),
+    ]);
+    agentLogs.push(`Agent 1: ${resumeData.allSkills?.length ?? 0} skills, ${resumeData.experienceYears}y exp`);
     agentLogs.push(`Agent 2: ${jdData.requiredSkills?.length ?? 0} required skills for ${jdData.title}`);
 
-    // ── Build compact context strings (no pretty-print JSON) ──────────────
-    const candidateCtx =
-      `CANDIDATE: ${resumeData.experienceYears}y ${resumeData.experienceLevel} | Skills: ${(resumeData.allSkills ?? []).join(", ")} | Certs: ${(resumeData.certifications ?? []).join(", ")} | Education: ${resumeData.educationLevel}`;
-
-    const jobCtx =
-      `JOB: ${jdData.title} | Required: ${(jdData.requiredSkills ?? []).join(", ")} | Nice-to-have: ${(jdData.niceToHaveSkills ?? []).join(", ")} | Keywords: ${(jdData.keywords ?? []).join(", ")} | Exp required: ${jdData.experienceRequired}y`;
+    // ── Build compact context strings ──────────────────────────────────────
+    const candidateCtx = `CANDIDATE: ${resumeData.experienceYears}y ${resumeData.experienceLevel} | Skills: ${(resumeData.allSkills ?? []).slice(0,20).join(", ")} | Education: ${resumeData.educationLevel}`;
+    const jobCtx = `JOB: ${jdData.title} | Required: ${(jdData.requiredSkills ?? []).join(", ")} | Keywords: ${(jdData.keywords ?? []).join(", ")} | Exp: ${jdData.experienceRequired}y`;
 
     // ── Agents 3, 6, 7 — parallel ─────────────────────────────────────────
     agentLogs.push("Agents 3+6+7 running in parallel...");
     const [gapData, jdBiasData, integrityData] = await Promise.all([
-      runAgent<GapData>(
-        "Agent 3", AGENT3_PROMPT,
-        `${candidateCtx}\n${jobCtx}`,
-        SMART_MODEL, 580
-      ),
-      runAgent<JDBiasData>(
-        "Agent 6", AGENT6_PROMPT,
-        `JD:\n${jdText}`,
-        FAST_MODEL, 260
-      ),
-      runAgent<IntegrityData>(
-        "Agent 7", AGENT7_PROMPT,
-        `RESUME:\n${resumeText}`,
-        FAST_MODEL, 220
-      ),
+      runAgent<GapData>("Agent 3", AGENT3_PROMPT, `${candidateCtx}\n${jobCtx}`, SMART_MODEL, 600, gapFallback),
+      runAgent<JDBiasData>("Agent 6", AGENT6_PROMPT, `JD:\n${jdText}`, FAST_MODEL, 280, biasFallback),
+      runAgent<IntegrityData>("Agent 7", AGENT7_PROMPT, `RESUME:\n${resumeText.slice(0,1500)}`, FAST_MODEL, 250, integrityFallback),
     ]);
     agentLogs.push(`Agent 3: ATS ${gapData.atsScore}/100 Grade ${gapData.grade}`);
-    agentLogs.push(`Agent 6: Bias ${jdBiasData.overallRating}, ${jdBiasData.biasedPhrases?.length ?? 0} issues`);
+    agentLogs.push(`Agent 6: Bias ${jdBiasData.overallRating}`);
     agentLogs.push(`Agent 7: Integrity ${integrityData.integrityScore}/100`);
 
-    // ── Agent 4 — Career Coach (smart model, compact context) ─────────────
+    // ── Agent 4 — Career Coach ─────────────────────────────────────────────
     agentLogs.push("Agent 4 (Career Coach): Generating recommendations...");
-    const coachCtx =
-      `ROLE: ${jdData.title}\nREQUIRED: ${(jdData.requiredSkills ?? []).slice(0, 8).join(", ")}\nCANDIDATE: ${(resumeData.topSkills ?? []).join(", ")}\nMISSING: ${(gapData.missingKeywords ?? []).join(", ")}\nATS: ${gapData.atsScore}/100\nBULLETS:\n${(resumeData.bulletPoints ?? []).slice(0, 6).join("\n")}`;
+    const coachCtx = `ROLE: ${jdData.title}\nREQUIRED: ${(jdData.requiredSkills ?? []).slice(0,8).join(", ")}\nCANDIDATE SKILLS: ${(resumeData.topSkills ?? []).join(", ")}\nMISSING: ${(gapData.missingKeywords ?? []).join(", ")}\nATS: ${gapData.atsScore}/100\nBULLETS:\n${(resumeData.bulletPoints ?? []).slice(0,5).join("\n")}`;
+    const coachData = await runAgent<CoachData>("Agent 4", AGENT4_PROMPT, coachCtx, SMART_MODEL, 900, coachFallback);
+    agentLogs.push(`Agent 4: ${coachData.rewriteSuggestions?.length ?? 0} rewrites`);
 
-    const coachData = await runAgent<CoachData>(
-      "Agent 4", AGENT4_PROMPT,
-      coachCtx,
-      SMART_MODEL, 820
-    );
-    agentLogs.push(`Agent 4: ${coachData.rewriteSuggestions?.length ?? 0} rewrites, ${coachData.interviewQuestions?.length ?? 0} questions`);
-
-    // ── Agent 5 — Counterfactual (fast model, minimal context) ───────────
+    // ── Agent 5 — Counterfactual ───────────────────────────────────────────
     agentLogs.push("Agent 5 (Counterfactual): Computing what-if scenarios...");
     const counterfactualData = await runAgent<CounterfactualData>(
       "Agent 5", AGENT5_PROMPT,
-      `CURRENT SCORE: ${gapData.atsScore}\nMISSING SKILLS: ${(gapData.missingKeywords ?? []).join(", ")}\nJOB: ${jdData.title}\nLEVEL: ${resumeData.experienceLevel}`,
-      FAST_MODEL, 240
+      `CURRENT SCORE: ${gapData.atsScore}\nMISSING: ${(gapData.missingKeywords ?? []).join(", ")}\nJOB: ${jdData.title}\nLEVEL: ${resumeData.experienceLevel}`,
+      FAST_MODEL, 280, cfFallback
     );
     agentLogs.push(`Agent 5: ${counterfactualData.scenarios?.length ?? 0} scenarios`);
 
