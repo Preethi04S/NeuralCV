@@ -1186,7 +1186,6 @@ export default function LandingPage() {
                 whileHover={{ rotateX:-5,rotateY:6,scale:1.03,borderColor:`${color}55`,
                   boxShadow:`0 28px 64px rgba(0,0,0,0.15),0 0 32px ${color}22` }}
                 transition={{ type:"spring",stiffness:260,damping:20 }}
-                style={{ transformStyle:"preserve-3d" }}
                 className="p-7 rounded-2xl h-full cursor-default"
                 style={{ background:th.featureCard,border:`1px solid ${th.featureBorder}`,
                   boxShadow:isDark?"none":"0 2px 12px rgba(0,0,0,0.06)",transformStyle:"preserve-3d" }}>
